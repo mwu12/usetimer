@@ -3,6 +3,21 @@
 #include <unistd.h>
 #include <signal.h>
 #include <time.h>
+#include <pthread.h>
+
+#define INIT_SEC 3
+#define INTV_SEC 10
+
+typedef void (*timer_timeout_callback)(union sigval);
+static int g_count = 0;
+static void TimeoutAction(union sigval)
+{
+    if (g_count == 0)
+        printf("[Thread] Timer expired %d times (%d sec)\n", ++g_count, INIT_SEC);
+    else
+        printf("[Thread] Timer expired %d times (%d sec)\n", ++g_count, INTV_SEC);
+    // Add your status and variable checks here
+}
 
 void timer_handler(int signum)
 {
@@ -13,10 +28,12 @@ void timer_handler(int signum)
 
 int main()
 {
+    pthread_attr_t attr;
     struct sigaction sa;
     struct sigevent sev;
-    struct itimerspec its = {{10,0},{3,0}};
+    struct itimerspec its = {{INTV_SEC,0},{INIT_SEC,0}};
     timer_t timerid;
+    timer_timeout_callback t_callback = TimeoutAction;
 
     // Set up signal handler
     sa.sa_flags = SA_SIGINFO;
@@ -29,14 +46,26 @@ int main()
     }
 
     // Set up timer
+#if 0
     sev.sigev_notify = SIGEV_SIGNAL;
     sev.sigev_signo = SIGRTMIN;
     sev.sigev_value.sival_ptr = &timerid;
     if (timer_create(CLOCK_REALTIME, &sev, &timerid) == -1)
     {
-        perror("timer_create");
+        perror("timer_create SIGEV_SIGNAL");
         exit(EXIT_FAILURE);
     }
+#else
+    pthread_attr_init(&attr);
+    sev.sigev_notify = SIGEV_THREAD;
+    sev.sigev_notify_function = t_callback;
+    sev.sigev_notify_attributes = &attr;
+    if (timer_create(CLOCK_REALTIME, &sev, &timerid) == -1)
+    {
+        perror("timer_create SIGEV_THREAD");
+        exit(EXIT_FAILURE);
+    }
+#endif
 
     // Start the timer
     //its.it_value.tv_sec = 10;  // Initial expiration
